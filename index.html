@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="th">
 <head>
 <meta charset="UTF-8">
@@ -515,6 +515,17 @@ table.quot-table tr:nth-child(even) td{background:#fafafa;}
 </div>
 
 <script>
+// ── PASSWORD PROTECTION ──
+(function(){
+  const PASS = 'tubtim2569'; // เปลี่ยนรหัสได้ที่นี่
+  const KEY = 'crm_auth';
+  if(sessionStorage.getItem(KEY)==='ok') return;
+  document.body.style.display='none';
+  const pwd = prompt('🔐 กรุณาใส่รหัสผ่านเพื่อเข้าใช้งาน ทับทิม CRM:');
+  if(pwd===PASS){ sessionStorage.setItem(KEY,'ok'); document.body.style.display=''; }
+  else{ document.body.innerHTML='<div style="display:flex;align-items:center;justify-content:center;height:100vh;background:#0f0f0f;color:#E8272A;font-size:20px;font-family:Sarabun,sans-serif">❌ รหัสผ่านไม่ถูกต้อง — กรุณารีเฟรชหน้าใหม่</div>'; document.body.style.display=''; }
+})();
+
 const SHEET_URL='https://script.google.com/macros/s/AKfycbywlOKXIhUtzj565pZk5iKTBiFZbQq0Z7tMPBW-E1KFhnTqfGDoqhta2b39GWpZ67Xmgw/exec';
 const PRODUCT_TYPES=['ป้ายไวนิล','ป้ายอะคริลิค','ป้ายโฟม','สติ๊กเกอร์ตัด','สติ๊กเกอร์พิมพ์','แบนเนอร์','ป้ายผ้า','ป้าย LED','สติ๊กเกอร์ใส','นามบัตร','อื่นๆ (พิมพ์เอง)'];
 const STATUSES={new:{label:'รับออเดอร์ใหม่',cls:'s-new'},design:{label:'ออกแบบ',cls:'s-design'},production:{label:'ผลิต',cls:'s-production'},done:{label:'เสร็จแล้ว',cls:'s-done'},delivered:{label:'ส่งมอบแล้ว',cls:'s-delivered'}};
@@ -597,12 +608,13 @@ function renderStats(){
   const thisMonth=orders.filter(o=>o.createdAt&&o.createdAt.startsWith(ym));
   const monthRev=thisMonth.reduce((s,o)=>s+o.total,0);
   const active=orders.filter(o=>o.status!=='delivered').length;
-  const allRev=orders.reduce((s,o)=>s+o.total,0);
+  const thisYear=new Date().getFullYear();
+  const allRev=orders.filter(o=>o.createdAt&&o.createdAt.startsWith(String(thisYear))).reduce((s,o)=>s+o.total,0);
   const today=orders.filter(o=>o.createdAt===now.toISOString().slice(0,10)).length;
   document.getElementById('statsRow').innerHTML=`
     <div class="stat-card"><div class="stat-label">รายได้เดือนนี้</div><div class="stat-value">฿${monthRev.toLocaleString()}</div><div class="stat-sub">${thisMonth.length} ออเดอร์</div></div>
     <div class="stat-card"><div class="stat-label">กำลังดำเนินการ</div><div class="stat-value">${active}</div><div class="stat-sub">ยังไม่ส่งมอบ</div></div>
-    <div class="stat-card"><div class="stat-label">รายได้รวมทั้งหมด</div><div class="stat-value">฿${allRev.toLocaleString()}</div><div class="stat-sub">ทุกออเดอร์</div></div>
+    <div class="stat-card"><div class="stat-label">รายได้รวมปีนี้</div><div class="stat-value">฿${allRev.toLocaleString()}</div><div class="stat-sub">ปี ${thisYear}</div></div>
     <div class="stat-card"><div class="stat-label">เพิ่มวันนี้</div><div class="stat-value">${today}</div><div class="stat-sub">ออเดอร์ใหม่</div></div>`;
 }
 
@@ -615,7 +627,25 @@ function renderDashboard(){
   document.getElementById('barChart').innerHTML=monthData.map(m=>{const ym=m.year+'-'+String(m.month+1).padStart(2,'0');const pct=Math.round((m.rev/maxRev)*100);const isThis=ym===curYM;return`<div class="bar-col"><div class="bar-val">${m.rev>0?'฿'+(m.rev>=1000?(m.rev/1000).toFixed(0)+'k':m.rev):''}</div><div class="bar-wrap"><div class="bar ${isThis?'this-month':''}" style="height:${Math.max(pct,2)}%" title="฿${m.rev.toLocaleString()} (${m.count})"></div></div><div class="bar-label">${m.label}</div></div>`;}).join('');
   document.getElementById('dashMonthTotal').textContent='เดือนนี้ ฿'+monthData.slice(-1)[0].rev.toLocaleString();
   const chTotals={};orders.forEach(o=>{chTotals[o.channel]=(chTotals[o.channel]||0)+1;});const total=orders.length||1;const chColors={facebook:'#1877F2',line:'#06C755',instagram:'#E1306C',phone:'#F59E0B'};
-  document.getElementById('channelBars').innerHTML=Object.entries(CHANNELS).map(([k,ch])=>{const n=chTotals[k]||0;const pct=Math.round(n/total*100);return`<div class="ch-bar-row"><div class="ch-bar-label"><span>${ch.icon} ${ch.label}</span><span>${n} (${pct}%)</span></div><div class="ch-bar-track"><div class="ch-bar-fill" style="width:${pct}%;background:${chColors[k]}"></div></div></div>`;}).join('');
+  // สัดส่วนช่องทางแบบละเอียด — ใช้ชื่อจริงจาก channelDetail
+  const chDetailMap={};
+  orders.forEach(o=>{
+    const key=(o.channelDetail&&o.channelDetail.trim())?o.channelDetail.trim():(o.channel||'ไม่ระบุ');
+    if(!chDetailMap[key])chDetailMap[key]={count:0,rev:0,base:o.channel||'other'};
+    chDetailMap[key].count++;
+    chDetailMap[key].rev+=(o.total||0);
+  });
+  const chDetailRows=Object.entries(chDetailMap).sort((a,b)=>b[1].count-a[1].count);
+  const chDetailMax=Math.max(1,...chDetailRows.map(([,v])=>v.count));
+  const chColorMap={facebook:'#1877F2',line:'#06C755',instagram:'#E1306C',phone:'#F59E0B',other:'#A855F7'};
+  document.getElementById('channelBars').innerHTML=chDetailRows.map(([name,v])=>{
+    const pct=Math.round(v.count/total*100);
+    const barW=Math.max(4,Math.round(v.count/chDetailMax*100));
+    const baseKey=Object.keys(chColorMap).find(k=>v.base.toLowerCase().includes(k))||'other';
+    const col=chColorMap[baseKey];
+    const icon=v.base.toLowerCase().includes('facebook')?'📘':v.base.toLowerCase().includes('line')?'💚':v.base.toLowerCase().includes('instagram')?'📸':v.base.toLowerCase().includes('phone')||v.base.toLowerCase().includes('walk')?'📞':'💬';
+    return`<div class="ch-bar-row"><div class="ch-bar-label"><span>${icon} ${name}</span><span style="font-family:'IBM Plex Mono',monospace">${v.count} ออเดอร์ (${pct}%) · ฿${v.rev.toLocaleString()}</span></div><div class="ch-bar-track"><div class="ch-bar-fill" style="width:${barW}%;background:${col}"></div></div></div>`;
+  }).join('');
   const custMap={};orders.forEach(o=>{if(!custMap[o.name])custMap[o.name]={name:o.name,rev:0,count:0};custMap[o.name].rev+=o.total;custMap[o.name].count++;});
   document.getElementById('topCustomers').innerHTML=Object.values(custMap).sort((a,b)=>b.rev-a.rev).slice(0,5).map((c,i)=>`<div class="top-item"><span class="top-rank">#${i+1}</span><span class="top-name">${c.name}</span><span class="top-val">฿${c.rev.toLocaleString()}</span><span class="top-count">${c.count} ครั้ง</span></div>`).join('');
   document.getElementById('monthlyTable').innerHTML=monthData.slice().reverse().map(m=>{const avg=m.count?Math.round(m.rev/m.count):0;const ym=m.year+'-'+String(m.month+1).padStart(2,'0');const isThis=ym===curYM;return`<tr style="${isThis?'background:var(--bg3)':''}"><td style="font-weight:${isThis?700:400}">${m.label}${isThis?' ← เดือนนี้':''}</td><td>${m.count}</td><td style="font-family:'IBM Plex Mono',monospace;color:${m.rev>0?'var(--green)':'var(--text3)'}">฿${m.rev.toLocaleString()}</td><td style="font-family:'IBM Plex Mono',monospace">${avg>0?'฿'+avg.toLocaleString():'—'}</td></tr>`;}).join('');
@@ -678,7 +708,22 @@ function renderKanban(){
 
 // ── CUSTOMER SEARCH ──
 function searchCustomers(){const q=document.getElementById('customerSearch').value.toLowerCase().trim();const dd=document.getElementById('customerDropdown');if(!q){dd.classList.remove('show');return;}const seen=new Set();const matches=orders.filter(o=>{if(seen.has(o.name))return false;if(o.name.toLowerCase().includes(q)){seen.add(o.name);return true;}return false;}).slice(0,5);if(!matches.length){dd.classList.remove('show');return;}dd.innerHTML=matches.map(o=>{const ch=CHANNELS[o.channel]||CHANNELS.phone;return`<div class="customer-option" onclick="fillCustomer('${o.name}')"><div class="customer-option-name">${o.name}</div><div class="customer-option-sub">${o.phone||''} · ${ch.icon} ${ch.label}</div></div>`;}).join('');dd.classList.add('show');}
-function fillCustomer(name){const latest=orders.filter(o=>o.name===name).slice(-1)[0];if(!latest)return;document.getElementById('f_name').value=latest.name;document.getElementById('f_phone').value=latest.phone||'';document.getElementById('f_channel').value=latest.channel;document.getElementById('f_social').value=latest.social||'';document.getElementById('customerSearch').value='';document.getElementById('customerDropdown').classList.remove('show');showToast(`โหลดข้อมูล "${name}" แล้ว`);}
+function fillCustomer(name){
+  const latest=orders.filter(o=>o.name===name).slice(-1)[0];
+  if(!latest)return;
+  document.getElementById('f_name').value=latest.name;
+  document.getElementById('f_phone').value=latest.phone||'';
+  document.getElementById('f_channel').value=latest.channel;
+  document.getElementById('f_social').value=latest.social||'';
+  document.getElementById('customerSearch').value='';
+  document.getElementById('customerDropdown').classList.remove('show');
+  // จำช่องทางย่อยด้วย
+  setTimeout(function(){
+    var cdEl=document.getElementById('f_channelDetail');
+    if(cdEl&&latest.channelDetail) cdEl.value=latest.channelDetail;
+  },100);
+  showToast('โหลดข้อมูล "'+name+'" แล้ว');
+}
 document.addEventListener('click',e=>{if(!e.target.closest('.customer-search-wrap'))document.getElementById('customerDropdown').classList.remove('show');});
 
 // ── ADD/EDIT MODAL ──
@@ -700,10 +745,11 @@ function addProductItem(p){
         <input type="text" class="pi-type-custom type-custom-input ${isCustom?'show':''}" placeholder="พิมพ์ชื่อประเภท..." value="${isCustom?typeVal:''}">
       </div></div>
     </div>
-    <div class="pi-row2" style="grid-template-columns:1.2fr .8fr .8fr .8fr;">
+    <div class="pi-row2" style="grid-template-columns:1.2fr .7fr .7fr .6fr .7fr;">
       <div class="form-group"><label>ขนาด / สเปค</label><input type="text" class="pi-size" placeholder="100×200 ซม." value="${p?p.size||'':''}"></div>
       <div class="form-group"><label>จำนวน (ชิ้น)</label><input type="number" class="pi-qty" min="1" value="${p?p.qty:1}" oninput="calcRow('${id}')"></div>
       <div class="form-group"><label>ราคา / ชิ้น (฿)</label><input type="number" class="pi-price" min="0" value="${p?p.price:0}" oninput="calcRow('${id}')"></div>
+      <div class="form-group"><label>ส่วนลด (฿)</label><input type="number" class="pi-discount" min="0" value="${p?p.discount||0:0}" oninput="calcRow('${id}')" placeholder="0"></div>
       <div class="form-group"><label>ราคารวม</label><div class="price-total-box"><div class="price-total-label">อัตโนมัติ</div><div class="price-total-val" id="rowtotal_${id}">฿0</div></div></div>
     </div>
     <div class="form-group" style="margin-bottom:10px"><label>รายละเอียดงาน (พับ/เจาะ/ตัด ฯลฯ)</label><textarea class="pi-detail-txt" placeholder="เช่น พับขอบ เจาะตาไก่ 4 มุม..." rows="2">${p?p.detail||'':''}</textarea></div>
@@ -748,10 +794,38 @@ function getDriveLinks(itemId){
 }
 function previewDrive(input,id){}
 function onTypeChange(sel,id){const ci=document.getElementById(id).querySelector('.pi-type-custom');if(sel.value==='อื่นๆ (พิมพ์เอง)'){ci.classList.add('show');ci.focus();}else ci.classList.remove('show');}
-function calcRow(id){const item=document.getElementById(id);if(!item)return;const qty=parseFloat(item.querySelector('.pi-qty').value)||0;const price=parseFloat(item.querySelector('.pi-price').value)||0;const box=document.getElementById('rowtotal_'+id);if(box)box.textContent='฿'+(qty*price).toLocaleString();updateTotal();}
+function calcRow(id){
+  const item=document.getElementById(id);if(!item)return;
+  const qty=parseFloat(item.querySelector('.pi-qty').value)||0;
+  const price=parseFloat(item.querySelector('.pi-price').value)||0;
+  const disc=parseFloat(item.querySelector('.pi-discount')?.value)||0;
+  const total=Math.max(0,(qty*price)-disc);
+  const box=document.getElementById('rowtotal_'+id);
+  if(box){
+    box.textContent='฿'+total.toLocaleString();
+    box.style.color=disc>0?'var(--yellow)':'var(--red)';
+  }
+  if(disc>0){
+    let hint=document.getElementById('disc_hint_'+id);
+    if(!hint){hint=document.createElement('div');hint.id='disc_hint_'+id;hint.style.cssText='font-size:10px;color:var(--yellow);margin-top:2px';box.parentElement.appendChild(hint);}
+    hint.textContent='ราคาเต็ม ฿'+(qty*price).toLocaleString()+' - ลด ฿'+disc.toLocaleString();
+  }else{
+    const hint=document.getElementById('disc_hint_'+id);if(hint)hint.textContent='';
+  }
+  updateTotal();
+}
 function removeProductItem(id){const el=document.getElementById(id);if(el){el.remove();updateTotal();}}
-function updateTotal(){let t=0;document.querySelectorAll('#productItems .product-item').forEach(item=>{t+=(parseFloat(item.querySelector('.pi-qty')?.value)||0)*(parseFloat(item.querySelector('.pi-price')?.value)||0);});document.getElementById('totalAmount').textContent='฿'+t.toLocaleString();}
-function getProductsFromForm(){return Array.from(document.querySelectorAll('#productItems .product-item')).map(item=>{const sel=item.querySelector('.pi-type-select');const ci=item.querySelector('.pi-type-custom');const type=sel.value==='อื่นๆ (พิมพ์เอง)'?(ci.value||'อื่นๆ'):sel.value;const itemId=item.id;const driveUrls=getDriveLinks(itemId);return{jobName:item.querySelector('.pi-jobname').value.trim(),type,size:item.querySelector('.pi-size').value.trim(),qty:parseFloat(item.querySelector('.pi-qty').value)||1,price:parseFloat(item.querySelector('.pi-price').value)||0,detail:item.querySelector('.pi-detail-txt').value.trim(),driveUrls:driveUrls,driveUrl:driveUrls[0]||''};});}
+function updateTotal(){
+  let t=0;
+  document.querySelectorAll('#productItems .product-item').forEach(item=>{
+    const qty=parseFloat(item.querySelector('.pi-qty')?.value)||0;
+    const price=parseFloat(item.querySelector('.pi-price')?.value)||0;
+    const disc=parseFloat(item.querySelector('.pi-discount')?.value)||0;
+    t+=Math.max(0,(qty*price)-disc);
+  });
+  document.getElementById('totalAmount').textContent='฿'+t.toLocaleString();
+  updateBalance();
+});}
 
 async function saveOrder(){
   if(isSaving)return;const name=document.getElementById('f_name').value.trim();if(!name){showToast('กรุณากรอกชื่อลูกค้า','error');return;}
@@ -1160,13 +1234,13 @@ loadFromSheets();
     var now=new Date(), ym=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0'), map={};
     orders.filter(function(o){return (o.createdAt||'').startsWith(ym);}).forEach(function(o){
       (o.products||[]).forEach(function(p){
-        var k=p.type||'ไม่ระบุ'; map[k]=map[k]||{type:k,qty:0,rev:0};
-        map[k].qty+=Number(p.qty)||0; map[k].rev+=(Number(p.qty)||0)*(Number(p.price)||0);
+        var k=p.type||'ไม่ระบุ'; map[k]=map[k]||{type:k,orders:0,rev:0};
+        map[k].orders+=1; map[k].rev+=(Number(p.qty)||0)*(Number(p.price)||0);
       });
     });
-    var rows=Object.values(map).sort(function(a,b){return b.qty-a.qty;}), max=Math.max(1,...rows.map(function(r){return r.qty;}));
+    var rows=Object.values(map).sort(function(a,b){return b.orders-a.orders;}), max=Math.max(1,...rows.map(function(r){return r.orders;}));
     $('categoryBars').innerHTML=rows.length?rows.slice(0,8).map(function(r){
-      return '<div class="category-row"><div class="category-name" title="'+escapeHtml(r.type)+'">'+escapeHtml(r.type)+'</div><div class="category-track"><div class="category-fill" style="width:'+Math.max(4,Math.round(r.qty/max*100))+'%"></div></div><div class="category-meta">'+r.qty+' ชิ้น · '+money(r.rev)+'</div></div>';
+      return '<div class="category-row"><div class="category-name" title="'+escapeHtml(r.type)+'">'+escapeHtml(r.type)+'</div><div class="category-track"><div class="category-fill" style="width:'+Math.max(4,Math.round(r.orders/max*100))+'%"></div></div><div class="category-meta">'+r.orders+' ออเดอร์ · '+money(r.rev)+'</div></div>';
     }).join(''):'<div class="kanban-empty">ยังไม่มีงานเดือนนี้</div>';
   };
 
