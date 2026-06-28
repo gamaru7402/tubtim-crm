@@ -526,7 +526,7 @@ table.quot-table tr:nth-child(even) td{background:#fafafa;}
   else{ document.body.innerHTML='<div style="display:flex;align-items:center;justify-content:center;height:100vh;background:#0f0f0f;color:#E8272A;font-size:20px;font-family:Sarabun,sans-serif">❌ รหัสผ่านไม่ถูกต้อง — กรุณารีเฟรชหน้าใหม่</div>'; document.body.style.display=''; }
 })();
 
-const SHEET_URL='https://script.google.com/macros/s/AKfycbywlOKXIhUtzj565pZk5iKTBiFZbQq0Z7tMPBW-E1KFhnTqfGDoqhta2b39GWpZ67Xmgw/exec';
+const SHEET_URL='https://script.google.com/macros/s/AKfycbxcRAwX3wF7-6KWfL67qYF2CLa2uHzqBe5hf4XXqPJF74E0BGQE_zHgwAPANBpRF1fd7g/exec';
 const PRODUCT_TYPES=['ป้ายไวนิล','ป้ายอะคริลิค','ป้ายโฟม','สติ๊กเกอร์ตัด','สติ๊กเกอร์พิมพ์','แบนเนอร์','ป้ายผ้า','ป้าย LED','สติ๊กเกอร์ใส','นามบัตร','อื่นๆ (พิมพ์เอง)'];
 const STATUSES={new:{label:'รับออเดอร์ใหม่',cls:'s-new'},design:{label:'ออกแบบ',cls:'s-design'},production:{label:'ผลิต',cls:'s-production'},done:{label:'เสร็จแล้ว',cls:'s-done'},delivered:{label:'ส่งมอบแล้ว',cls:'s-delivered'}};
 const CHANNELS={facebook:{label:'Facebook',cls:'channel-fb',icon:'📘'},line:{label:'Line',cls:'channel-line',icon:'💚'},instagram:{label:'Instagram',cls:'channel-ig',icon:'📸'},phone:{label:'โทรศัพท์',cls:'channel-phone',icon:'📞'}};
@@ -662,7 +662,7 @@ function renderList(){
   const tbody=document.getElementById('orderTableBody');
   if(!filtered.length){tbody.innerHTML=`<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--text3)">ไม่พบออเดอร์</td></tr>`;return;}
   tbody.innerHTML=filtered.slice().reverse().map(o=>{
-    const ch=CHANNELS[o.channel]||CHANNELS.phone,st=STATUSES[o.status]||STATUSES.new;
+    const st=STATUSES[o.status]||STATUSES.new;
     const jobs=(o.products||[]).map(p=>p.jobName||p.type).join(', ');
     const dd=dueDays(o.due),isOverdue=dd!==null&&dd<0&&o.status!=='delivered'&&o.status!=='done';
     // first product with image
@@ -674,7 +674,7 @@ function renderList(){
       <td class="thumb-cell">${thumbHtml}</td>
       <td><span class="order-id">${o.id}</span></td>
       <td><strong>${o.name}</strong>${o.phone?`<br><span style="font-size:12px;color:var(--text3)">${o.phone}</span>`:''}</td>
-      <td><span class="channel-badge ${ch.cls}">${ch.icon} ${ch.label}</span></td>
+      <td><span class="channel-badge ${chCls(o.channel)}">${chIcon(o.channel)} ${(o.channel||'—')}</span></td>
       <td style="max-width:180px;font-size:13px">${jobs}</td>
       <td><span class="status-badge ${st.cls}">${st.label}</span></td>
       <td>${o.due&&o.due!=='undefined'?`<div style="font-size:12px;color:var(--text2)">${o.due}</div>${dueBadge(o.due,o.status)}`:'<span style="color:var(--text3);font-size:12px">—</span>'}</td>
@@ -689,7 +689,7 @@ function renderKanban(){
     const col=orders.filter(o=>o.status===key);
     return`<div class="kanban-col"><div class="kanban-col-header"><span class="kanban-col-title">${st.label}</span><span class="kanban-col-count">${col.length}</span></div>
       ${col.length===0?'<div class="kanban-empty">ไม่มีออเดอร์</div>':col.map(o=>{
-        const ch=CHANNELS[o.channel]||CHANNELS.phone,dd=dueDays(o.due),isOver=dd!==null&&dd<0;
+        const dd=dueDays(o.due),isOver=dd!==null&&dd<0;
         const thumbs=(o.products||[]).flatMap(p=>{const urls=Array.isArray(p.driveUrls)&&p.driveUrls.length?p.driveUrls:(p.driveUrl?[p.driveUrl]:[]);return urls.map(driveThumbUrl);}).filter(Boolean).slice(0,4);
         const thumbStrip=thumbs.length?`<div class="kanban-thumb-strip">${thumbs.map(u=>`<img class="kanban-thumb" src="${u}" onclick="event.stopPropagation();openLightbox('${u}')" onerror="this.style.display='none'">`).join('')}</div>`:'';
         return`<div class="kanban-card ${isOver?'overdue':''}" onclick="openDetail('${o.id}')">
@@ -698,7 +698,7 @@ function renderKanban(){
             <div class="kanban-card-id">${o.id}${isOver?' 🔴':''}</div>
             <div class="kanban-card-name">${o.name}</div>
             <div class="kanban-card-product">${(o.products||[]).map(p=>p.jobName||p.type).join(' · ')}</div>
-            <div class="kanban-card-footer"><span class="channel-badge ${ch.cls}" style="font-size:10px;padding:2px 6px">${ch.icon} ${ch.label}</span><span class="kanban-card-amount">฿${(o.total||0).toLocaleString()}</span></div>
+            <div class="kanban-card-footer"><span class="channel-badge ${chCls(o.channel)}" style="font-size:10px;padding:2px 6px">${chIcon(o.channel)} ${(o.channel||'—')}</span><span class="kanban-card-amount">฿${(o.total||0).toLocaleString()}</span></div>
           </div>
         </div>`;
       }).join('')}
@@ -707,7 +707,7 @@ function renderKanban(){
 }
 
 // ── CUSTOMER SEARCH ──
-function searchCustomers(){const q=document.getElementById('customerSearch').value.toLowerCase().trim();const dd=document.getElementById('customerDropdown');if(!q){dd.classList.remove('show');return;}const seen=new Set();const matches=orders.filter(o=>{if(seen.has(o.name))return false;if(o.name.toLowerCase().includes(q)){seen.add(o.name);return true;}return false;}).slice(0,5);if(!matches.length){dd.classList.remove('show');return;}dd.innerHTML=matches.map(o=>{const ch=CHANNELS[o.channel]||CHANNELS.phone;return`<div class="customer-option" onclick="fillCustomer('${o.name}')"><div class="customer-option-name">${o.name}</div><div class="customer-option-sub">${o.phone||''} · ${ch.icon} ${ch.label}</div></div>`;}).join('');dd.classList.add('show');}
+function searchCustomers(){const q=document.getElementById('customerSearch').value.toLowerCase().trim();const dd=document.getElementById('customerDropdown');if(!q){dd.classList.remove('show');return;}const seen=new Set();const matches=orders.filter(o=>{if(seen.has(o.name))return false;if(o.name.toLowerCase().includes(q)){seen.add(o.name);return true;}return false;}).slice(0,5);if(!matches.length){dd.classList.remove('show');return;}dd.innerHTML=matches.map(o=>{return`<div class="customer-option" onclick="fillCustomer('${o.name}')"><div class="customer-option-name">${o.name}</div><div class="customer-option-sub">${o.phone||''} · ${chIcon(o.channel)} ${(o.channel||'—')}</div></div>`;}).join('');dd.classList.add('show');}
 function fillCustomer(name){
   const latest=orders.filter(o=>o.name===name).slice(-1)[0];
   if(!latest)return;
@@ -825,7 +825,7 @@ function updateTotal(){
   });
   document.getElementById('totalAmount').textContent='฿'+t.toLocaleString();
   updateBalance();
-});}
+}
 
 async function saveOrder(){
   if(isSaving)return;const name=document.getElementById('f_name').value.trim();if(!name){showToast('กรุณากรอกชื่อลูกค้า','error');return;}
@@ -839,8 +839,7 @@ async function saveOrder(){
 // ── DETAIL ──
 function openDetail(id){
   currentDetailId=id;const o=orders.find(x=>x.id===id);if(!o)return;
-  const ch=CHANNELS[o.channel]||CHANNELS.phone;
-  document.getElementById('detailOrderId').textContent=o.id+' — '+o.name;
+    document.getElementById('detailOrderId').textContent=o.id+' — '+o.name;
   document.getElementById('detailDate').textContent='สร้างเมื่อ '+o.createdAt+(o.due&&o.due!=='undefined'?' · สั่งวันที่ '+o.due:'');
   const sOrder=['new','design','production','done','delivered'];const ci=sOrder.indexOf(o.status);
   document.getElementById('detailBody').innerHTML=`
@@ -849,7 +848,7 @@ function openDetail(id){
       <div class="detail-grid">
         <div><div class="detail-item-label">ชื่อ</div><div class="detail-item-value">${o.name}</div></div>
         <div><div class="detail-item-label">เบอร์โทร</div><div class="detail-item-value">${o.phone||'—'}</div></div>
-        <div><div class="detail-item-label">ช่องทาง</div><div class="detail-item-value"><span class="channel-badge ${ch.cls}">${ch.icon} ${ch.label}</span></div></div>
+        <div><div class="detail-item-label">ช่องทาง</div><div class="detail-item-value"><span class="channel-badge ${chCls(o.channel)}">${chIcon(o.channel)} ${(o.channel||'—')}</span></div></div>
         <div><div class="detail-item-label">สั่งวันที่</div><div class="detail-item-value">${o.due&&o.due!=='undefined'?o.due:'—'}</div></div>
       </div>
     </div>
@@ -1003,6 +1002,26 @@ window.addEventListener('load', function() {
   }, 300);
 });
 
+
+function chCls(ch){
+  if(!ch)return 'channel-other';
+  const l=ch.toLowerCase();
+  if(l.includes('facebook'))return 'channel-fb';
+  if(l.includes('line'))return 'channel-line';
+  if(l.includes('instagram'))return 'channel-ig';
+  if(l.includes('โทร')||l.includes('walk'))return 'channel-phone';
+  return 'channel-other';
+}
+function chIcon(ch){
+  if(!ch)return '💬';
+  const l=ch.toLowerCase();
+  if(l.includes('facebook'))return '📘';
+  if(l.includes('line'))return '💚';
+  if(l.includes('instagram'))return '📸';
+  if(l.includes('โทร')||l.includes('walk'))return '📞';
+  return '💬';
+}
+
 loadFromSheets();
 </script>
 <style id="crm-enhanced-style">
@@ -1064,7 +1083,7 @@ loadFromSheets();
     var base=channelBase(o&&o.channel);
     var ch=(typeof CHANNELS!=='undefined'&&CHANNELS[base])||{label:'อื่นๆ',cls:'channel-other',icon:'💬'};
     var d=channelDetail(o);
-    return Object.assign({},ch,{label:d?ch.label+' · '+d:ch.label});
+    return Object.assign({},ch,{label:d?(o.channel||'—')+' · '+d:(o.channel||'—')});
   }
   function assigneeText(a){
     if(!a)return '';
@@ -1081,12 +1100,12 @@ loadFromSheets();
   window.assigneeText=assigneeText; window.escapeHtml=escapeHtml;
   try{CHANNELS.other={label:'อื่นๆ',cls:'channel-other',icon:'💬'};}catch(e){}
 
-  var oldSer=ser, oldDeser=deser;
+  var oldSer=(typeof ser!=='undefined'?ser:null), oldDeser=(typeof deser!=='undefined'?deser:null);
   ser=function(o){
     return [o.id,o.name,o.phone||'',channelBase(o.channel),o.social||'',o.status,o.due||'',o.note||'',o.total,o.createdAt,JSON.stringify(o.products),JSON.stringify(o.notes||[]),o.channelDetail||'',Number(o.deposit||0),JSON.stringify(o.assignees||{}),o.deliveredAt||'',o.dueText||''];
   };
   deser=function(row){
-    var o=oldDeser(row);
+    var o=oldDeser?oldDeser(row):null;
     if(!o)return null;
     o.channel=channelBase(o.channel);
     o.channelDetail=String(row[12]||'');
@@ -1222,7 +1241,7 @@ loadFromSheets();
       var firstThumb=(o.products||[]).flatMap(function(p){var urls=Array.isArray(p.driveUrls)&&p.driveUrls.length?p.driveUrls:(p.driveUrl?[p.driveUrl]:[]);return urls.map(driveThumbUrl);}).find(Boolean)||'';
       var thumbHtml=firstThumb?`<img class="thumb-img" src="${firstThumb}" alt="" onclick="event.stopPropagation();openLightbox('${firstThumb}')" onerror="this.parentElement.innerHTML='<div class=thumb-placeholder>🖼</div>'">`:'<div class="thumb-placeholder">—</div>';
       var payLine=o.status==='delivered'?'<span style="font-size:11px;color:var(--green)">จ่ายแล้ว</span>':`<span style="font-size:11px;color:${getBalance(o)>0?'var(--yellow)':'var(--green)'}">คงเหลือ ${money(getBalance(o))}</span>`;
-      return `<tr onclick="openDetail('${o.id}')" class="${isOverdue?'overdue':''}"><td class="thumb-cell">${thumbHtml}</td><td><span class="order-id">${o.id}</span></td><td><strong>${escapeHtml(o.name)}</strong>${o.phone?'<br><span style="font-size:12px;color:var(--text3)">'+escapeHtml(o.phone)+'</span>':''}</td><td><span class="channel-badge ${ch.cls}">${ch.icon} ${escapeHtml(ch.label)}</span></td><td style="max-width:180px;font-size:13px">${escapeHtml(jobs)}</td><td style="max-width:150px;font-size:12px;color:var(--text2)">${escapeHtml(assigneeText(o.assignees))||'—'}</td><td><span class="status-badge ${st.cls}">${st.label}</span></td><td>${o.due&&o.due!=='undefined'?'<div style="font-size:12px;color:var(--text2)">'+o.due+'</div>':'<span style="color:var(--text3);font-size:12px">—</span>'}</td><td><span class="amount">${money(o.total)}</span><br>${payLine}</td></tr>`;
+      return `<tr onclick="openDetail('${o.id}')" class="${isOverdue?'overdue':''}"><td class="thumb-cell">${thumbHtml}</td><td><span class="order-id">${o.id}</span></td><td><strong>${escapeHtml(o.name)}</strong>${o.phone?'<br><span style="font-size:12px;color:var(--text3)">'+escapeHtml(o.phone)+'</span>':''}</td><td><span class="channel-badge ${chCls(o.channel)}">${chIcon(o.channel)} ${escapeHtml((o.channel||'—'))}</span></td><td style="max-width:180px;font-size:13px">${escapeHtml(jobs)}</td><td style="max-width:150px;font-size:12px;color:var(--text2)">${escapeHtml(assigneeText(o.assignees))||'—'}</td><td><span class="status-badge ${st.cls}">${st.label}</span></td><td>${o.due&&o.due!=='undefined'?'<div style="font-size:12px;color:var(--text2)">'+o.due+'</div>':'<span style="color:var(--text3);font-size:12px">—</span>'}</td><td><span class="amount">${money(o.total)}</span><br>${payLine}</td></tr>`;
     }).join('');
   };
 
@@ -1252,7 +1271,7 @@ loadFromSheets();
         var ch=displayChannel(o), dd=dueDays(o.due), isOver=dd!==null&&dd<0;
         var thumbs=(o.products||[]).flatMap(function(p){var urls=Array.isArray(p.driveUrls)&&p.driveUrls.length?p.driveUrls:(p.driveUrl?[p.driveUrl]:[]);return urls.map(driveThumbUrl);}).filter(Boolean).slice(0,4);
         var strip=thumbs.length?'<div class="kanban-thumb-strip">'+thumbs.map(function(u){return `<img class="kanban-thumb" src="${u}" onclick="event.stopPropagation();openLightbox('${u}')" onerror="this.style.display='none'">`;}).join('')+'</div>':'';
-        return `<div class="kanban-card ${isOver?'overdue':''}" onclick="openDetail('${o.id}')">${strip}<div class="kanban-card-body"><div class="kanban-card-id">${o.id}${isOver?' 🔴':''}</div><div class="kanban-card-name">${escapeHtml(o.name)}</div><div class="kanban-card-product">${escapeHtml((o.products||[]).map(function(p){return p.jobName||p.type;}).join(' · '))}</div><div class="kanban-card-footer"><span class="channel-badge ${ch.cls}" style="font-size:10px;padding:2px 6px">${ch.icon} ${escapeHtml(ch.label)}</span><span class="kanban-card-amount">${money(o.total)}</span></div></div></div>`;
+        return `<div class="kanban-card ${isOver?'overdue':''}" onclick="openDetail('${o.id}')">${strip}<div class="kanban-card-body"><div class="kanban-card-id">${o.id}${isOver?' 🔴':''}</div><div class="kanban-card-name">${escapeHtml(o.name)}</div><div class="kanban-card-product">${escapeHtml((o.products||[]).map(function(p){return p.jobName||p.type;}).join(' · '))}</div><div class="kanban-card-footer"><span class="channel-badge ${chCls(o.channel)}" style="font-size:10px;padding:2px 6px">${chIcon(o.channel)} ${escapeHtml((o.channel||'—'))}</span><span class="kanban-card-amount">${money(o.total)}</span></div></div></div>`;
       }).join(''))+'</div>';
     }).join('');
     renderDeliveredSummary();
