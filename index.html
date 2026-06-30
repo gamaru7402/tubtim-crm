@@ -815,6 +815,18 @@ function calcRow(id){
   updateTotal();
 }
 function removeProductItem(id){const el=document.getElementById(id);if(el){el.remove();updateTotal();}}
+
+function updateBalance(){
+  const totalEl=document.getElementById('totalAmount');
+  const depEl=document.getElementById('f_deposit');
+  const balEl=document.getElementById('balanceAmount');
+  if(!totalEl||!depEl||!balEl)return;
+  const total=parseFloat(totalEl.textContent.replace(/[฿,]/g,''))||0;
+  const dep=parseFloat(depEl.value)||0;
+  const bal=Math.max(total-dep,0);
+  balEl.textContent='฿'+bal.toLocaleString();
+}
+
 function updateTotal(){
   let t=0;
   document.querySelectorAll('#productItems .product-item').forEach(item=>{
