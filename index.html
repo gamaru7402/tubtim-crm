@@ -839,6 +839,30 @@ function updateTotal(){
   updateBalance();
 }
 
+
+function getProductsFromForm(){
+  return Array.from(document.querySelectorAll('#productItems .product-item')).map(item=>{
+    const sel=item.querySelector('.pi-type-select');
+    const ci=item.querySelector('.pi-type-custom');
+    const type=sel&&sel.value==='อื่นๆ (พิมพ์เอง)'?(ci&&ci.value||'อื่นๆ'):(sel&&sel.value||'ไม่ระบุ');
+    const itemId=item.id;
+    const driveUrls=getDriveLinks(itemId);
+    const qty=parseFloat(item.querySelector('.pi-qty')?.value)||1;
+    const price=parseFloat(item.querySelector('.pi-price')?.value)||0;
+    const discount=parseFloat(item.querySelector('.pi-discount')?.value)||0;
+    const subtotal=Math.max(0,(qty*price)-discount);
+    return{
+      jobName:(item.querySelector('.pi-jobname')?.value||'').trim(),
+      type,
+      size:(item.querySelector('.pi-size')?.value||'').trim(),
+      qty,price,discount,subtotal,
+      detail:(item.querySelector('.pi-detail-txt')?.value||'').trim(),
+      driveUrls,
+      driveUrl:driveUrls[0]||''
+    };
+  });
+}
+
 async function saveOrder(){
   if(isSaving)return;const name=document.getElementById('f_name').value.trim();if(!name){showToast('กรุณากรอกชื่อลูกค้า','error');return;}
   const products=getProductsFromForm();const total=products.reduce((s,p)=>s+(p.qty*p.price),0);
