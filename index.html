@@ -345,6 +345,54 @@ table.quot-table tr:nth-child(even) td{background:#fafafa;}
 }
 #addOverlay .modal-body{flex:1;overflow-y:auto;}
 #addOverlay .modal-header,#addOverlay .modal-footer{flex-shrink:0;}
+
+/* ── DRAG & RESIZE in print preview ── */
+.print-sheet{position:relative;}
+.ps-draggable{
+  position:relative;cursor:move;user-select:none;
+  transition:box-shadow .15s;
+}
+.ps-draggable:hover{
+  outline:2px dashed rgba(232,39,42,.5);
+  outline-offset:2px;
+}
+.ps-draggable.dragging{
+  outline:2px solid #E8272A;
+  box-shadow:0 4px 20px rgba(0,0,0,.3);
+  z-index:10;
+  opacity:.9;
+}
+/* resize handle */
+.ps-resize-handle{
+  position:absolute;bottom:-6px;right:-6px;
+  width:14px;height:14px;
+  background:#E8272A;border-radius:3px;
+  cursor:se-resize;z-index:11;
+  display:none;
+}
+.ps-draggable:hover .ps-resize-handle{display:block;}
+/* toolbar */
+.ps-toolbar{
+  display:none;position:fixed;top:16px;left:50%;transform:translateX(-50%);
+  background:#222;border:1px solid #444;border-radius:10px;
+  padding:8px 14px;z-index:999;gap:8px;align-items:center;
+  font-family:'Sarabun',sans-serif;font-size:13px;color:#fff;
+  box-shadow:0 4px 20px rgba(0,0,0,.5);
+}
+.ps-toolbar.show{display:flex;}
+.ps-tb-btn{
+  background:#333;border:1px solid #555;border-radius:6px;
+  color:#fff;cursor:pointer;padding:4px 10px;font-size:12px;
+  font-family:'Sarabun',sans-serif;transition:background .15s;
+  white-space:nowrap;
+}
+.ps-tb-btn:hover{background:#E8272A;border-color:#E8272A;}
+.ps-tb-sep{color:#555;}
+@media print{
+  .ps-draggable{outline:none!important;box-shadow:none!important;}
+  .ps-resize-handle,.ps-toolbar{display:none!important;}
+}
+
 </style>
 <script src="https://apis.google.com/js/api.js"></script>
 <script src="https://accounts.google.com/gsi/client"></script>
@@ -768,6 +816,7 @@ function addProductItem(p){
   if(driveUrls&&driveUrls.length){driveUrls.forEach(u=>addDriveLink(id,u));}else{addDriveLink(id);}
   calcRow(id);
 }
+window.openAddModal=openAddModal;
 
 function addDriveLink(itemId, url=''){
   const wrap=document.getElementById('dlinks_'+itemId);
@@ -1058,6 +1107,115 @@ function chIcon(ch){
   return '💬';
 }
 
+
+// ── DRAG & RESIZE ENGINE ──
+function initDraggable(container){
+  // ทำให้ทุก element ใน print-sheet ย้ายได้
+  var sheet=container.querySelector('.print-sheet');
+  if(!sheet)return;
+
+  // สร้าง toolbar
+  var tb=document.createElement('div');
+  tb.className='ps-toolbar';
+  tb.innerHTML=
+    '<span style="color:#aaa;font-size:11px">คลิกที่ส่วนไหนก็ได้เพื่อย้าย/ปรับขนาด</span>'+
+    '<span class="ps-tb-sep">|</span>'+
+    '<button class="ps-tb-btn" onclick="resetLayout(this)">↺ รีเซ็ต</button>'+
+    '<button class="ps-tb-btn" onclick="this.parentElement.style.display=\'none\'">✕</button>';
+  document.body.appendChild(tb);
+
+  // wrap elements
+  var elems=['.ps-title','.ps-images','.ps-money-row','.ps-contact'];
+  elems.forEach(function(sel){
+    var el=sheet.querySelector(sel);
+    if(!el)return;
+    // wrap ใน draggable container
+    var wrap=document.createElement('div');
+    wrap.className='ps-draggable';
+    wrap.dataset.origStyle='';
+    el.parentNode.insertBefore(wrap,el);
+    wrap.appendChild(el);
+    // เพิ่ม resize handle
+    var handle=document.createElement('div');
+    handle.className='ps-resize-handle';
+    wrap.appendChild(handle);
+    // drag
+    makeDraggable(wrap,sheet,tb);
+    // resize
+    makeResizable(wrap,handle);
+  });
+}
+
+function makeDraggable(el,container,tb){
+  var startX,startY,startLeft,startTop,isDragging=false;
+  // convert to absolute if needed
+  el.addEventListener('mousedown',function(e){
+    if(e.target.classList.contains('ps-resize-handle'))return;
+    if(e.target.contentEditable==='true'){
+      // ถ้า double click ให้ edit ถ้า single click ให้ drag
+      if(!e.target._clickTimer){
+        e.target._clickTimer=setTimeout(function(){
+          e.target._clickTimer=null;
+        },200);
+        return; // single click = เตรียม drag
+      }
+      clearTimeout(e.target._clickTimer);
+      e.target._clickTimer=null;
+      return; // double click = edit
+    }
+    e.preventDefault();
+    isDragging=true;
+    el.classList.add('dragging');
+    tb.classList.add('show');
+    // switch to absolute
+    if(el.style.position!=='absolute'){
+      var rect=el.getBoundingClientRect();
+      var cRect=container.getBoundingClientRect();
+      el.style.position='absolute';
+      el.style.left=(rect.left-cRect.left)+'px';
+      el.style.top=(rect.top-cRect.top)+'px';
+      el.style.width=rect.width+'px';
+      el.style.margin='0';
+    }
+    startX=e.clientX;startY=e.clientY;
+    startLeft=parseInt(el.style.left)||0;
+    startTop=parseInt(el.style.top)||0;
+  });
+  document.addEventListener('mousemove',function(e){
+    if(!isDragging)return;
+    el.style.left=(startLeft+e.clientX-startX)+'px';
+    el.style.top=(startTop+e.clientY-startY)+'px';
+  });
+  document.addEventListener('mouseup',function(){
+    if(isDragging){isDragging=false;el.classList.remove('dragging');}
+  });
+}
+
+function makeResizable(el,handle){
+  var startX,startY,startW,startH,isResizing=false;
+  handle.addEventListener('mousedown',function(e){
+    e.preventDefault();e.stopPropagation();
+    isResizing=true;
+    startX=e.clientX;startY=e.clientY;
+    startW=el.offsetWidth;startH=el.offsetHeight;
+  });
+  document.addEventListener('mousemove',function(e){
+    if(!isResizing)return;
+    el.style.width=Math.max(80,startW+e.clientX-startX)+'px';
+    el.style.height=Math.max(30,startH+e.clientY-startY)+'px';
+  });
+  document.addEventListener('mouseup',function(){isResizing=false;});
+}
+
+function resetLayout(btn){
+  var sheet=btn.closest('body').querySelector('.print-sheet');
+  if(!sheet)return;
+  sheet.querySelectorAll('.ps-draggable').forEach(function(el){
+    el.style.position='';el.style.left='';el.style.top='';
+    el.style.width='';el.style.height='';el.style.margin='';
+  });
+}
+
 loadFromSheets();
 </script>
 <style id="crm-enhanced-style">
@@ -1201,7 +1359,7 @@ loadFromSheets();
     var bar=$('alertBar');
     if(bar)bar.classList.remove('show');
   };
-  var oldRefresh=refresh;
+  var oldRefresh=typeof refresh==='function'?refresh:function(){};
   refresh=function(){oldRefresh(); populateProductTypeFilter(); populateChannelDetailList();};
 
   var oldUpdateTotal=updateTotal;
@@ -1390,7 +1548,7 @@ loadFromSheets();
       if(d.size) detailStr+='ขนาด '+d.size+'  ';
       if(d.qty) detailStr+=d.qty+' ชิ้น  ';
       if(d.detail) detailStr+=d.detail;
-      return '<div class="ps-img-wrap">'+inner+'<div class="ps-img-label contenteditable=\"true\"">'+escapeHtml(label)+(detailStr?'<br>'+escapeHtml(detailStr):'')+'</div></div>';
+      return '<div class="ps-img-wrap">'+inner+'<div class="ps-img-label contenteditable=\"true\"">'+escapeHtml(detailStr)+'</div></div>';
     }).join('');
     var imageHtml=imagesHtml;
     var itemHtml='';
@@ -1403,7 +1561,7 @@ loadFromSheets();
     var balance=Math.max((o.total||0)-(getDeposit(o)||0),0);
     $('jobPrintBody').innerHTML=`<div class="print-sheet">
       <!-- ชื่องาน พิมพ์ได้ -->
-      <div class="ps-title" contenteditable="true">${escapeHtml(o.name||'')}</div>
+      <div class="ps-title" contenteditable="true">${escapeHtml((o.products||[]).map(function(p){return p.jobName||p.type;}).filter(Boolean).join(' / ')||o.name||'')} </div>
 
       <!-- รูปงาน ใหญ่ -->
       <div class="ps-images ${gridClass}">${imageHtml}</div>
@@ -1426,13 +1584,14 @@ loadFromSheets();
 
       <!-- contact + นัดรับ -->
       <div class="ps-contact">
-        <div class="ps-contact-name" contenteditable="true">${escapeHtml(o.name||'')}</div>
         <span class="ps-contact-ch" contenteditable="true">${escapeHtml(displayChannel(o).label)}</span>
+        <div class="ps-contact-name" contenteditable="true">${escapeHtml(o.name||'')}</div>
         <span class="ps-contact-phone" contenteditable="true">📞 ${escapeHtml(o.phone||'—')}</span>
         <span class="ps-contact-pickup" contenteditable="true">🕐 ${escapeHtml(pickup)||'—'}</span>
       </div>
     </div>`;
     $('jobPrintOverlay').classList.add('open');
+    setTimeout(function(){initDraggable(document.getElementById('jobPrintOverlay'));},100);
   };
   window.closeJobPrint=function(e){if(!e||e.target===$('jobPrintOverlay'))$('jobPrintOverlay').classList.remove('open');};
 
@@ -1440,5 +1599,102 @@ loadFromSheets();
 })();
 
 </script>
+<style id="crm-v36-style">
+.product-spec-panel{border:1px solid var(--border);background:#1b1b1b;border-radius:10px;padding:12px;margin:10px 0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.product-spec-panel .span2{grid-column:span 2}.check-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.check-pill{display:flex;align-items:center;gap:6px;background:var(--bg3);border:1px solid var(--border);border-radius:7px;padding:7px 9px;font-size:12px;color:var(--text2)}.check-pill input{width:auto}.order-total-mode{grid-column:span 3;background:#211b12;border:1px solid #F59E0B55;border-radius:10px;padding:12px}.order-total-inline{display:grid;grid-template-columns:auto 1fr;gap:10px;align-items:center}.order-total-inline input[type=checkbox]{width:auto}.customer-org-chip{display:inline-block;margin-top:3px;color:var(--yellow);font-size:11px}.product-spec-read{margin-top:6px;font-size:12px;color:var(--text2);line-height:1.5}.product-spec-read b{color:var(--text)}
+.print-sheet.v36{padding:5mm;display:block;position:relative}.ps-block-title{font-weight:800;font-size:13px;border-bottom:1px solid #111;margin-bottom:3mm;padding-bottom:1mm}.ps-detail-panel,.ps-note-panel,.ps-steps{border:2px solid #111;background:#fff;padding:3mm;margin-top:3mm;min-height:24mm;font-size:13px;line-height:1.55}.ps-detail-item{border-bottom:1px dotted #777;padding-bottom:1.5mm;margin-bottom:1.5mm}.ps-detail-name{font-weight:800;font-size:15px}.ps-detail-meta,.ps-detail-spec{font-size:12px;color:#333}.ps-note-panel{min-height:30mm}.ps-note-panel:empty:before{content:'หมายเหตุพิเศษ เช่น ส่งด้วย / เจาะห่าง / เชือกสี / งานด่วน / โทรก่อนผลิต';color:#aaa}.ps-steps{display:grid;grid-template-columns:repeat(5,1fr);gap:0;padding:0;min-height:18mm}.ps-step{border-right:1px solid #111;text-align:center;padding:2mm;font-weight:700}.ps-step:last-child{border-right:0}.ps-step-person{display:block;margin-top:2mm;font-weight:400;font-size:12px;border-top:1px dotted #111;padding-top:1mm;min-height:5mm}.ps-add-note-btn{background:#111;color:#fff;border:0;border-radius:6px;padding:5px 10px;font-family:'Sarabun',sans-serif;font-size:12px;cursor:pointer}.ps-image-toolbar{position:absolute;top:4px;right:4px;display:none}.ps-img-wrap:hover .ps-image-toolbar{display:block}.ps-image-toolbar button{border:0;background:#111;color:#fff;border-radius:4px;font-size:11px;padding:2px 5px;cursor:pointer}@media(max-width:720px){.product-spec-panel{grid-template-columns:1fr}.product-spec-panel .span2,.order-total-mode{grid-column:span 1}.check-grid{grid-template-columns:1fr}}@media print{.ps-add-note-btn,.ps-image-toolbar{display:none!important}.print-sheet.v36{width:148mm!important;min-height:210mm!important;overflow:hidden!important}}
+</style>
+<script id="crm-v36-addon">
+(function(){
+function $(id){return document.getElementById(id)}function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(m){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]})}function money(n){return '฿'+(Number(n)||0).toLocaleString()}function n(v){return parseFloat(v)||0}
+var types=['ไวนิล','สติกเกอร์พิมพ์กันน้ำ','สติกเกอร์ตัด','ฉลากสินค้า กันน้ำ','ฉลากสินค้า กระดาษ','นามบัตร','การ์ด','งานกรอบรูป','งานกล่องไฟ','ตัวอักษร','ป้ายอัฐิ','เมนูเคลือบแข็ง','ตรายาง','ป้ายถือ','อื่นๆ (พิมพ์เอง)'];try{types.forEach(function(t){if(!PRODUCT_TYPES.includes(t))PRODUCT_TYPES.splice(Math.max(0,PRODUCT_TYPES.length-1),0,t)})}catch(e){}
+var C={'ไวนิล':[['fabric','เกรดผ้า','s',['หนา 360 แกรม หลังขาว','หนา 360 แกรม หลังดำ','หนา 360 แกรม ผ้ากล่องไฟ','หนา 440 แกรม','หนา 510 แกรม','ส่งพิมพ์ร้านอื่น 440 แกรม กล่องไฟ','ส่งพิมพ์ร้านอื่น 440 แกรม']],['machine','เครื่องพิมพ์','s',['Solvent 5 เมตร','Solvent 3 เมตร','Epson S4','UV']],['work','ลักษณะงาน','m',['พับเจาะรู','พับไม่เจาะ','ปล่อยขอบ','ตัดเสมอ','ตัดเสมอติดกาว 2 หน้า','ร้อยท่อบนล่าง','ธงญี่ปุ่น 1 หน้า','ธงญี่ปุ่น 2 หน้า','ยิงโครงไม้','ยิงโครงไม้หนา','ติดแผ่น','โรลอัพ','เอ็กซ์สแตน','ติดตั้ง','ไม่ติดตั้ง','อื่นๆ']],['board','แผ่นอะไร / รายละเอียดติดแผ่น','t',[]]],'สติกเกอร์พิมพ์กันน้ำ':[['sticker','ประเภทสติกเกอร์','s',['ขาวหลังขาว ฟู่ซุ่น','ขาวหลังเทา 3M','สะท้อนแสง 3M','ใส','ซีทรู','แบล็คลิส','สูญญากาศ','ฝ้า','โฮโลแกรม','อื่นๆ']],['machine','เครื่องพิมพ์','s',['HP','Epson S4','UV','UV หมึกขาว']],['mount','ติดแผ่นไหม','s',['ไม่ติด','ฟิวเจอร์บอร์ด','พลาสวูด','โฟมบอร์ด','คอมโพสิต','อะคริลิค','ไวท์บอร์ด','อื่นๆ']],['mm','กี่มิล / วัสดุเพิ่มเติม','t',[]],['cut','ไดคัท','r',['ไดคัท','ตัดสี่เหลี่ยม']]],'สติกเกอร์ตัด':[['sticker','ประเภทสติกเกอร์','s',['ฟู่ซุ่น','3M','สะท้อนแสง','ใส','ฝ้า','สด','โฮโลแกรม','อื่นๆ']],['method','วิธีส่งงาน','m',['ตัดลอก','ตัดไม่ลอก','ติดรถ','ติดฟิวเจอร์บอร์ด','ติดพลาสวูด','ติดโฟมบอร์ด','ติดคอมโพสิต','ติดอะคริลิค','ติดไวท์บอร์ด','อื่นๆ']]],'ฉลากสินค้า กันน้ำ':[['sticker','ประเภทสติกเกอร์','s',['ขาวหลังขาว ฟู่ซุ่น','สะท้อนแสง 3M','ใส','สูญญากาศ','โฮโลแกรม']],['machine','เครื่องพิมพ์','s',['HP','Epson S4','UV','UV หมึกขาว']],['cut','การตัด','r',['ไดคัท','ตัดสี่เหลี่ยม']]],'ฉลากสินค้า กระดาษ':[['cut','การตัด','r',['ไดคัท','ตัดสี่เหลี่ยม']]],'นามบัตร':[['paper','กระดาษ','s',['อาร์ตมัน','อาร์ตด้าน','อาร์ตเคลือบ','พลาสติก']],['side','หน้า','r',['หน้าเดียว','สองหน้า']]],'การ์ด':[['paper','กระดาษ','s',['อาร์ตมัน','อาร์ตด้าน','กระดาษการ์ด']]],'งานกรอบรูป':[['frame','ประเภทกรอบ','r',['กรอบลอย','กรอบปกติ']],['finish','ผิวงาน','r',['เคลือบ','กระจก']]],'งานกล่องไฟ':[['frame','กรอบไฟ','s',['สำเร็จ','โครงเหล็ก','ลูกค้าทำเอง','อื่นๆ']],['light','ไฟ','s',['LED เม็ด','LED หลอด','อื่นๆ']],['face','ตัวงาน','s',['ไวนิลกล่องไฟ','สติกเกอร์ตัดติดไวนิล','สติกเกอร์พิมพ์ติดอะคริลิค','สติกเกอร์ตัดติดอะคริลิค','อื่นๆ']]],'ตัวอักษร':[['material','วัสดุตัวอักษร','s',['โฟมบอร์ด','พลาสวูด','คอมโพสิต','สันไท','ซิงค์','อะคริลิค']],['mm','กี่มิล','t',[]],['mount','ติดแผ่น','s',['ไม่ติด','โฟมบอร์ด','พลาสวูด','คอมโพสิต','สันไท','ซิงค์','อะคริลิค','อื่นๆ']]]};
+function fh(f,v,id){v=v==null?(f[2]=='m'?[]:''):v;if(f[2]=='s')return '<div class="form-group"><label>'+esc(f[1])+'</label><select class="pi-spec" data-k="'+f[0]+'"><option value="">เลือก...</option>'+f[3].map(function(o){return '<option '+(v==o?'selected':'')+'>'+esc(o)+'</option>'}).join('')+'</select></div>';if(f[2]=='t')return '<div class="form-group"><label>'+esc(f[1])+'</label><input class="pi-spec" data-k="'+f[0]+'" value="'+esc(v)+'"></div>';if(f[2]=='r')return '<div class="form-group"><label>'+esc(f[1])+'</label><div class="check-grid">'+f[3].map(function(o){return '<label class="check-pill"><input class="pi-spec" data-k="'+f[0]+'" type="radio" name="'+id+'_'+f[0]+'" value="'+esc(o)+'" '+(v==o?'checked':'')+'> '+esc(o)+'</label>'}).join('')+'</div></div>';return '<div class="form-group span2"><label>'+esc(f[1])+'</label><div class="check-grid">'+f[3].map(function(o){return '<label class="check-pill"><input class="pi-spec" data-k="'+f[0]+'" type="checkbox" value="'+esc(o)+'" '+(Array.isArray(v)&&v.includes(o)?'checked':'')+'> '+esc(o)+'</label>'}).join('')+'</div></div>'}
+function typeOfItem(item){var s=item.querySelector('.pi-type-select'),c=item.querySelector('.pi-type-custom');return s&&s.value==='อื่นๆ (พิมพ์เอง)'?(c&&c.value||'อื่นๆ'):(s&&s.value||'')}
+function renderSpecs(item,p){var type=typeOfItem(item),sp=(p&&p.specs)||{};var panel=item.querySelector('.product-spec-panel');if(!panel){panel=document.createElement('div');panel.className='product-spec-panel';item.querySelector('.pi-detail-txt').closest('.form-group').insertAdjacentElement('beforebegin',panel)}var alias=type.replace(/^ป้าย/,'').replace('สติ๊กเกอร์พิมพ์','สติกเกอร์พิมพ์กันน้ำ').replace('สติ๊กเกอร์ตัด','สติกเกอร์ตัด').replace('สติ๊กเกอร์ใส','สติกเกอร์พิมพ์กันน้ำ');var fs=C[type]||C[alias]||[];panel.innerHTML=fs.map(function(f){return fh(f,sp[f[0]],item.id)}).join('')+'<div class="form-group span2"><label>รายละเอียดเพิ่มเติม</label><textarea class="pi-spec-extra" placeholder="เช่น เจาะห่าง 15 ซม., เชือกสีแดง, โทรก่อนผลิต">'+esc((p&&p.extraDetail)||sp.extraDetail||'')+'</textarea></div>'}
+function lineTotal(item){var m=item.querySelector('.pi-line-total');if(m&&m.value!=='')return n(m.value);return Math.max(0,n(item.querySelector('.pi-qty')?.value)*n(item.querySelector('.pi-price')?.value)-n(item.querySelector('.pi-discount')?.value))}
+function enhanceItem(item,p){if(!item||item.dataset.v36)return;item.dataset.v36='1';var q=item.querySelector('.pi-qty');if(q){q.min='0';q.step='0.01'}var row=item.querySelector('.pi-row2');if(row&&!item.querySelector('.pi-line-total')){row.style.gridTemplateColumns='1.1fr .55fr .65fr .55fr .7fr .75fr';row.insertAdjacentHTML('beforeend','<div class="form-group"><label>ราคารวมจริง</label><input type="number" class="pi-line-total" min="0" step="0.01" placeholder="ถ้าคิดเหมา" value="'+esc(p&&p.lineTotal!=null?p.lineTotal:'')+'" oninput="calcRow(\''+item.id+'\')"></div>')}item.querySelector('.pi-type-select')?.addEventListener('change',function(){renderSpecs(item,{})});item.querySelector('.pi-type-custom')?.addEventListener('input',function(){renderSpecs(item,{})});renderSpecs(item,p||{});calcRow(item.id)}
+var OA=addProductItem;addProductItem=function(p){OA(p);enhanceItem(document.querySelector('#productItems .product-item:last-child'),p)};window.addProductItem=addProductItem;var OT=onTypeChange;onTypeChange=function(sel,id){if(OT)OT(sel,id);var item=$(id);if(item)renderSpecs(item,{})};window.onTypeChange=onTypeChange;var OC=calcRow;calcRow=function(id){var item=$(id);if(!item){if(OC)OC(id);return}var b=$('rowtotal_'+id);if(b)b.textContent=money(lineTotal(item));updateTotal()};window.calcRow=calcRow;
+function collectSpecs(item){var out={};item.querySelectorAll('.pi-spec').forEach(function(el){var k=el.dataset.k;if(el.type==='checkbox'){out[k]=out[k]||[];if(el.checked)out[k].push(el.value)}else if(el.type==='radio'){if(el.checked)out[k]=el.value}else if(el.value)out[k]=el.value});var ex=item.querySelector('.pi-spec-extra');if(ex&&ex.value.trim())out.extraDetail=ex.value.trim();return out}
+var OG=getProductsFromForm;getProductsFromForm=function(){var ps=OG();document.querySelectorAll('#productItems .product-item').forEach(function(item,i){var sp=collectSpecs(item);ps[i].specs=sp;ps[i].extraDetail=sp.extraDetail||'';ps[i].lineTotal=lineTotal(item);ps[i].subtotal=ps[i].lineTotal});return ps};window.getProductsFromForm=getProductsFromForm;
+function itemSum(){var s=0;document.querySelectorAll('#productItems .product-item').forEach(function(item){s+=lineTotal(item)});return s}function formTotal(){var ov=n($('f_orderTotalOverride')?.value);return $('f_useOrderTotal')?.checked&&ov>0?ov:itemSum()}
+function addFields(){var ph=$('f_phone');if(ph&&!$('f_customerOrg'))ph.closest('.form-group').insertAdjacentHTML('afterend','<div class="form-group"><label>ประเภท/หน่วยงานลูกค้า</label><input type="text" id="f_customerOrg" list="customerOrgList" placeholder="เช่น โรงเรียนบ้านดอน, บริษัท ABC"><datalist id="customerOrgList"><option value="โรงเรียน"><option value="บริษัท"><option value="โรงพยาบาล"><option value="หน่วยงานราชการ"><option value="ร้านค้า"><option value="อื่นๆ"></datalist></div>');var full=$('fullAmountBox');if(full&&!$('f_useOrderTotal'))full.closest('.finance-grid').insertAdjacentHTML('beforeend','<div class="form-group order-total-mode"><label>กรณีคิดราคาเหมาทั้งออเดอร์</label><div class="order-total-inline"><input type="checkbox" id="f_useOrderTotal" onchange="updateTotal()"><input type="number" id="f_orderTotalOverride" min="0" step="0.01" placeholder="ราคารวมที่ตกลง" oninput="updateTotal()"></div></div>')}
+var OU=updateTotal;updateTotal=function(){if(OU)OU();var total=formTotal();if($('fullAmountBox'))$('fullAmountBox').textContent=money(itemSum());if($('totalAmount'))$('totalAmount').textContent=money(total);var dep=n($('f_deposit')?.value);if($('balanceAmount'))$('balanceAmount').textContent=money(Math.max(0,total-dep));if($('balanceAmountBox'))$('balanceAmountBox').textContent=money(Math.max(0,total-dep))};window.updateTotal=updateTotal;
+var OAdd=openAddModal;openAddModal=function(){OAdd();addFields();if($('f_customerOrg'))$('f_customerOrg').value='';if($('f_useOrderTotal'))$('f_useOrderTotal').checked=false;if($('f_orderTotalOverride'))$('f_orderTotalOverride').value='';document.querySelectorAll('#productItems .product-item').forEach(function(i){enhanceItem(i,{})});updateTotal()};window.openAddModal=openAddModal;
+var OE=editCurrentOrder;editCurrentOrder=function(){var o=orders.find(function(x){return x.id===currentDetailId});OE();addFields();if(!o)return;if($('f_customerOrg'))$('f_customerOrg').value=o.customerOrg||'';if($('f_useOrderTotal'))$('f_useOrderTotal').checked=o.priceMode==='orderTotal';if($('f_orderTotalOverride'))$('f_orderTotalOverride').value=o.orderTotalOverride||'';document.querySelectorAll('#productItems .product-item').forEach(function(i,k){enhanceItem(i,(o.products||[])[k]||{})});updateTotal()};window.editCurrentOrder=editCurrentOrder;
+var OS=searchCustomers;searchCustomers=function(){var q=$('customerSearch').value.toLowerCase().trim(),dd=$('customerDropdown');if(!q){dd.classList.remove('show');return}var seen=new Set(),m=orders.filter(function(o){var hay=[o.name,o.phone,o.social,o.customerOrg,channelDetail?channelDetail(o):o.channel].join(' ').toLowerCase();if(seen.has(o.name))return false;if(hay.includes(q)){seen.add(o.name);return true}return false}).slice(0,8);if(!m.length){dd.classList.remove('show');return}dd.innerHTML=m.map(function(o){return '<div class="customer-option" onclick="fillCustomer(\''+String(o.name).replace(/'/g,"\\'")+'\')"><div class="customer-option-name">'+esc(o.name)+'</div><div class="customer-option-sub">'+esc(o.phone||'')+' · '+esc(o.channel||'—')+(o.channelDetail?' · '+esc(o.channelDetail):'')+(o.customerOrg?'<span class="customer-org-chip">'+esc(o.customerOrg)+'</span>':'')+'</div></div>'}).join('');dd.classList.add('show')};window.searchCustomers=searchCustomers;var OF=fillCustomer;fillCustomer=function(name){OF(name);var latest=orders.filter(function(o){return o.name===name}).slice(-1)[0];setTimeout(function(){if(latest&&$('f_customerOrg'))$('f_customerOrg').value=latest.customerOrg||''},120)};window.fillCustomer=fillCustomer;
+var OSER=ser,ODES=deser;ser=function(o){var r=OSER(o);r[17]=o.customerOrg||'';r[18]=o.priceMode||'';r[19]=Number(o.orderTotalOverride||0);return r};deser=function(r){var o=ODES(r);if(!o)return o;o.customerOrg=String(r[17]||'');o.priceMode=String(r[18]||'');o.orderTotalOverride=Number(r[19]||0);return o};
+saveOrder=async function(){if(isSaving)return;var name=$('f_name').value.trim();if(!name){showToast('กรุณากรอกชื่อลูกค้า','error');return}var products=getProductsFromForm(),sum=products.reduce(function(s,p){return s+(Number(p.lineTotal)||0)},0),use=$('f_useOrderTotal')?.checked,ov=n($('f_orderTotalOverride')?.value),total=use&&ov>0?ov:sum;isSaving=true;var btn=$('btnSave');btn.disabled=true;btn.innerHTML='<span class="spinner" style="width:14px;height:14px;border-width:2px;margin:0"></span> บันทึก...';var st=$('f_status').value,dep=st==='delivered'?total:n($('f_deposit')?.value),extra={channelDetail:$('f_channelDetail')?.value.trim()||'',deposit:dep,assignees:{owner:$('f_owner')?.value.trim()||'',designer:$('f_designer')?.value.trim()||'',producer:$('f_producer')?.value.trim()||'',packer:$('f_packer')?.value.trim()||'',deliverer:$('f_deliverer')?.value.trim()||''},dueText:$('f_dueText')?.value.trim()||'',customerOrg:$('f_customerOrg')?.value.trim()||'',priceMode:use?'orderTotal':'items',orderTotalOverride:use?ov:0};if(editingId){var idx=orders.findIndex(function(o){return o.id===editingId});if(idx>=0){var prev=orders[idx];orders[idx]=Object.assign({},prev,{name:name,phone:$('f_phone').value,channel:$('f_channel').value,social:$('f_social').value,status:st,products:products,total:total,due:$('f_due').value,note:$('f_note').value},extra,{deliveredAt:st==='delivered'?(prev.deliveredAt||new Date().toISOString().slice(0,10)):prev.deliveredAt})}}else orders.push(Object.assign({id:genId(),name:name,phone:$('f_phone').value,channel:$('f_channel').value,social:$('f_social').value,status:st,products:products,total:total,due:$('f_due').value,note:$('f_note').value,notes:[],createdAt:new Date().toISOString().slice(0,10)},extra,{deliveredAt:st==='delivered'?new Date().toISOString().slice(0,10):''}));await saveToSheets();isSaving=false;btn.disabled=false;btn.innerHTML='💾 บันทึกออเดอร์';$('addOverlay').classList.remove('open');refresh()};window.saveOrder=saveOrder;
+function specText(p){var s=p.specs||{},a=[];Object.keys(s).forEach(function(k){if(k==='extraDetail')return;var v=s[k];if(Array.isArray(v))v=v.join(', ');if(v)a.push(v)});if(s.extraDetail)a.push('เพิ่มเติม: '+s.extraDetail);return a.join(' · ')}
+var OD=openDetail;openDetail=function(id){OD(id);var o=orders.find(function(x){return x.id===id});if(!o)return;var g=document.querySelector('#detailBody .detail-grid');if(g&&o.customerOrg&&!$('customerOrgDetail'))g.insertAdjacentHTML('beforeend','<div id="customerOrgDetail"><div class="detail-item-label">ประเภท/หน่วยงาน</div><div class="detail-item-value">'+esc(o.customerOrg)+'</div></div>');document.querySelectorAll('.product-detail-card').forEach(function(card,i){var txt=specText((o.products||[])[i]||{});if(txt&&!card.querySelector('.product-spec-read'))card.querySelector('.product-detail-info').insertAdjacentHTML('beforeend','<div class="product-spec-read"><b>สเปค:</b> '+esc(txt)+'</div>')})};window.openDetail=openDetail;
+window.openJobPrint=function(){var o=orders.find(function(x){return x.id===currentDetailId});if(!o)return;var a=o.assignees||{},raw=o.dueText||o.due||'',pickup=raw;if(raw&&raw.includes('T'))try{var dt=new Date(raw);pickup=dt.toLocaleDateString('th-TH')+' เวลา '+dt.toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'})+' น.'}catch(e){}var imgs=[];(o.products||[]).forEach(function(p){(Array.isArray(p.driveUrls)&&p.driveUrls.length?p.driveUrls:(p.driveUrl?[p.driveUrl]:[])).forEach(function(u){var t=driveThumbUrl(u);if(t)imgs.push(t)})});var c=Math.min(Math.max(imgs.length,1),4),gc=c===1?'count-1':c===2?'count-2':c===3?'count-3':'count-4',images=(imgs.length?imgs.slice(0,4):['']).map(function(t,i){return '<div class="ps-img-wrap">'+(t?'<img src="'+esc(t)+'" onerror="this.style.opacity=.12">':'<div style="height:100%;display:flex;align-items:center;justify-content:center;color:#aaa">ไม่มีรูป</div>')+'<div class="ps-image-toolbar"><button onclick="this.closest(\'.ps-img-wrap\').remove()">ลบ</button></div><div class="ps-img-label" contenteditable="true">รูปที่ '+(i+1)+'</div></div>'}).join(''),detail=(o.products||[]).map(function(p,i){var st=specText(p);return '<div class="ps-detail-item" contenteditable="true"><div class="ps-detail-name">รายการที่ '+(i+1)+' - '+esc(p.type||'')+'</div><div class="ps-detail-meta">'+esc([p.size,p.qty?('จำนวน '+p.qty):'',p.lineTotal!=null?money(p.lineTotal):''].filter(Boolean).join(' · '))+'</div>'+(st?'<div class="ps-detail-spec">'+esc(st)+'</div>':'')+(p.detail?'<div class="ps-detail-spec">'+esc(p.detail)+'</div>':'')+'</div>'}).join(''),del=o.status==='delivered',bal=del?0:Math.max((o.total||0)-(Number(o.deposit)||0),0);$('jobPrintBody').innerHTML='<div class="print-sheet v36"><div class="ps-title" contenteditable="true"></div><div class="ps-images '+gc+'">'+images+'</div><div class="ps-detail-panel"><div class="ps-block-title">รายละเอียดงาน</div>'+detail+'</div><div class="ps-note-panel" contenteditable="true">'+esc(o.note||'')+'</div><button class="ps-add-note-btn no-print" type="button" onclick="addPrintNoteBox()">+ เพิ่มกล่องหมายเหตุ</button><div class="ps-money-row"><div class="ps-money-cell full"><div class="ps-money-label">ราคาเต็ม</div><div class="ps-money-val" contenteditable="true">'+money(o.total)+'</div></div><div class="ps-money-cell paid"><div class="ps-money-label">มัดจำ/จ่ายแล้ว</div><div class="ps-money-val" contenteditable="true">'+(del?'จ่ายแล้ว':money(o.deposit||0))+'</div></div>'+(del?'':'<div class="ps-money-cell balance"><div class="ps-money-label">คงเหลือ</div><div class="ps-money-val" contenteditable="true">'+money(bal)+'</div></div>')+'</div><div class="ps-contact"><span class="ps-contact-ch" contenteditable="true">'+esc((displayChannel?displayChannel(o).label:o.channel)||'')+'</span><div class="ps-contact-name" contenteditable="true">'+esc(o.name||'')+(o.customerOrg?' / '+esc(o.customerOrg):'')+'</div><span class="ps-contact-phone" contenteditable="true">'+esc(o.phone||'')+'</span><span class="ps-contact-pickup" contenteditable="true">นัดรับ '+esc(pickup||'—')+'</span></div><div class="ps-steps"><div class="ps-step">รับงาน<span class="ps-step-person" contenteditable="true">'+esc(a.owner||'')+'</span></div><div class="ps-step">ออกแบบ<span class="ps-step-person" contenteditable="true">'+esc(a.designer||'')+'</span></div><div class="ps-step">ผลิต<span class="ps-step-person" contenteditable="true">'+esc(a.producer||'')+'</span></div><div class="ps-step">แพ็ค<span class="ps-step-person" contenteditable="true">'+esc(a.packer||'')+'</span></div><div class="ps-step">ส่ง<span class="ps-step-person" contenteditable="true">'+esc(a.deliverer||'')+'</span></div></div></div>';$('jobPrintOverlay').classList.add('open');setTimeout(function(){initDraggable($('jobPrintOverlay'))},100)};
+window.addPrintNoteBox=function(){var sheet=document.querySelector('#jobPrintBody .print-sheet');if(!sheet)return;var box=document.createElement('div');box.className='ps-note-panel';box.contentEditable='true';box.textContent='หมายเหตุเพิ่มเติม';sheet.insertBefore(box,sheet.querySelector('.ps-money-row'));initDraggable($('jobPrintOverlay'))};
+initDraggable=function(container){var sheet=container.querySelector('.print-sheet');if(!sheet)return;var tb=document.querySelector('.ps-toolbar')||document.createElement('div');tb.className='ps-toolbar';tb.innerHTML='<span style="color:#aaa;font-size:11px">ลากกล่องเพื่อย้าย / มุมขวาล่างเพื่อย่อขยาย / ดับเบิลคลิกเพื่อพิมพ์แก้</span><span class="ps-tb-sep">|</span><button class="ps-tb-btn" onclick="resetLayout(this)">รีเซ็ต</button><button class="ps-tb-btn" onclick="this.parentElement.style.display=\'none\'">ปิด</button>';if(!tb.parentNode)document.body.appendChild(tb);['.ps-title','.ps-images','.ps-detail-panel','.ps-note-panel','.ps-money-row','.ps-contact','.ps-steps'].forEach(function(sel){sheet.querySelectorAll(sel).forEach(function(el){if(el.parentElement.classList.contains('ps-draggable'))return;var w=document.createElement('div');w.className='ps-draggable';el.parentNode.insertBefore(w,el);w.appendChild(el);var h=document.createElement('div');h.className='ps-resize-handle';w.appendChild(h);makeDraggable(w,sheet,tb);makeResizable(w,h)})})};window.initDraggable=initDraggable;
+var ODP=openDrivePicker;openDrivePicker=function(itemId){_pickerTargetItemId=itemId;if(!_gapiReady||!_gisReady){showToast('Drive ยังโหลดไม่เสร็จ ถ้าค้างให้รีเฟรชหน้า 1 ครั้ง','warning');return}if(_pickerToken)_showPicker();else _tokenClient.requestAccessToken({prompt:'consent'})};window.openDrivePicker=openDrivePicker;
+window.addEventListener('load',function(){setTimeout(function(){addFields();document.querySelectorAll('#productItems .product-item').forEach(function(i){enhanceItem(i,{})});updateTotal()},600)})
+})();
+</script>
+<style id="crm-v37-print-controls">
+.ps-draggable{position:relative}.ps-box-remove{position:absolute;top:-8px;right:-8px;width:20px;height:20px;border:0;border-radius:50%;background:#E8272A;color:#fff;font-size:13px;line-height:20px;display:none;align-items:center;justify-content:center;cursor:pointer;z-index:20;box-shadow:0 2px 8px rgba(0,0,0,.25)}.ps-draggable:hover>.ps-box-remove{display:flex}.ps-draggable.deleted{display:none!important}.ps-resize-handle::after{content:'A';position:absolute;right:13px;bottom:0;font-size:9px;color:#111;background:#fff;border:1px solid #111;border-radius:2px;padding:0 2px;line-height:12px}.ps-scale-hint{position:absolute;left:6px;top:-20px;background:#111;color:#fff;border-radius:5px;padding:2px 6px;font-size:10px;display:none;z-index:21}.ps-draggable.resizing .ps-scale-hint{display:block}@media print{.ps-box-remove,.ps-scale-hint{display:none!important}}
+</style>
+<script id="crm-v37-print-controls">
+(function(){
+  function addDeleteButtons(container){
+    var root=container||document;
+    root.querySelectorAll('.ps-draggable').forEach(function(wrap){
+      if(!wrap.querySelector(':scope > .ps-box-remove')){
+        var b=document.createElement('button');
+        b.type='button';
+        b.className='ps-box-remove';
+        b.title='ลบกล่องนี้';
+        b.textContent='×';
+        b.addEventListener('mousedown',function(e){e.stopPropagation();});
+        b.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();wrap.remove();});
+        wrap.appendChild(b);
+      }
+      if(!wrap.querySelector(':scope > .ps-scale-hint')){
+        var h=document.createElement('div');
+        h.className='ps-scale-hint';
+        h.textContent='ขยายตัวอักษรตามกล่อง';
+        wrap.appendChild(h);
+      }
+    });
+  }
+  var oldInit=window.initDraggable;
+  window.initDraggable=function(container){
+    if(oldInit)oldInit(container);
+    addDeleteButtons(container||document);
+  };
+  window.makeResizable=function(el,handle){
+    var startX,startY,startW,startH,isResizing=false,bases=[];
+    handle.addEventListener('mousedown',function(e){
+      e.preventDefault();e.stopPropagation();
+      isResizing=true;
+      startX=e.clientX;startY=e.clientY;startW=el.offsetWidth;startH=el.offsetHeight;
+      bases=Array.from(el.querySelectorAll('*')).filter(function(node){return !node.classList.contains('ps-resize-handle')&&!node.classList.contains('ps-box-remove')&&!node.classList.contains('ps-scale-hint');}).map(function(node){
+        var fs=parseFloat(getComputedStyle(node).fontSize)||12;
+        if(!node.dataset.baseFontSize)node.dataset.baseFontSize=fs;
+        return {node:node,size:parseFloat(node.dataset.baseFontSize)||fs};
+      });
+      el.classList.add('resizing');
+    });
+    document.addEventListener('mousemove',function(e){
+      if(!isResizing)return;
+      var w=Math.max(80,startW+e.clientX-startX);
+      var h=Math.max(30,startH+e.clientY-startY);
+      el.style.width=w+'px';
+      el.style.height=h+'px';
+      var scale=Math.max(.65,Math.min(2.6,(w/startW+h/startH)/2));
+      bases.forEach(function(item){item.node.style.fontSize=Math.max(8,Math.min(44,item.size*scale))+'px';});
+    });
+    document.addEventListener('mouseup',function(){if(isResizing){isResizing=false;el.classList.remove('resizing');}});
+  };
+  window.addEventListener('click',function(e){
+    if(e.target&&e.target.id==='btnJobPrint')setTimeout(function(){addDeleteButtons(document.getElementById('jobPrintOverlay'));},250);
+  },true);
+})();
+</script>
 </body>
 </html>
+
+
+
